@@ -236,9 +236,7 @@ class _DashboardView extends ConsumerWidget {
             body: 'Your category budgets will show here.',
           )
         else
-          _Group(children: [
-            for (final p in data.categories) _CategoryRow(progress: p),
-          ]),
+          _CategoryList(items: data.categories),
         const SizedBox(height: 28),
         Text('Recent', style: text.titleLarge),
         const SizedBox(height: 12),
@@ -581,6 +579,58 @@ class _TxRow extends StatelessWidget {
               Text(_when(), style: muted),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shows the categories closest to their limit first, four at a time.
+class _CategoryList extends StatefulWidget {
+  const _CategoryList({required this.items});
+  final List<CategoryProgress> items;
+
+  @override
+  State<_CategoryList> createState() => _CategoryListState();
+}
+
+class _CategoryListState extends State<_CategoryList> {
+  static const _collapsed = 4;
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // Most used first; ties keep the budget's own order.
+    final indexed = [
+      for (var i = 0; i < widget.items.length; i++) (i, widget.items[i]),
+    ]..sort((a, b) {
+        final byUse = b.$2.fraction.compareTo(a.$2.fraction);
+        return byUse != 0 ? byUse : a.$1.compareTo(b.$1);
+      });
+    final sorted = [for (final e in indexed) e.$2];
+    final shown = _expanded ? sorted : sorted.take(_collapsed).toList();
+    final hiddenCount = sorted.length - _collapsed;
+
+    return AnimatedSize(
+      duration: Motion.of(context, Motion.medium),
+      curve: Motion.curve,
+      alignment: Alignment.topCenter,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Group(children: [for (final p in shown) _CategoryRow(progress: p)]),
+          if (hiddenCount > 0)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => setState(() => _expanded = !_expanded),
+                icon: Icon(_expanded
+                    ? Icons.expand_less_rounded
+                    : Icons.expand_more_rounded),
+                label: Text(
+                    _expanded ? 'Show less' : 'Show $hiddenCount more'),
+              ),
+            ),
         ],
       ),
     );

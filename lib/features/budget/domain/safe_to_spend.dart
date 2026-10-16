@@ -40,7 +40,7 @@ class SafeToSpend {
     // Today's limit is based on what you had before today's spending,
     // so spending doesn't shrink the limit you're measured against.
     final startOfDay = math.max(0, spendableKobo + spentTodayKobo);
-    final limit = startOfDay ~/ days;
+    final limit = (startOfDay ~/ days) ~/ 100 * 100;
     final leftToday = limit - spentTodayKobo;
 
     final daysLeftInWeek = 8 - now.weekday; // Monday = 7 … Sunday = 1

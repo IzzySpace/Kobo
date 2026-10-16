@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/providers.dart';
 import 'core/theme/app_theme.dart';
-import 'features/home/home_placeholder.dart';
+import 'features/home/home_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
 
 class KoboApp extends ConsumerWidget {
@@ -25,7 +25,7 @@ class KoboApp extends ConsumerWidget {
       themeMode: themeMode,
       home: switch (settings) {
         AsyncData(:final value) => value.onboardingDone
-            ? const HomePlaceholder()
+            ? const HomeScreen()
             : const OnboardingScreen(),
         AsyncError(:final error) => Scaffold(
             body: Center(

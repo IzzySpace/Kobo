@@ -12,22 +12,29 @@ import '../../../core/ui/motion.dart';
 import '../../../core/ui/note_card.dart';
 import '../../../core/ui/step_layout.dart';
 import '../../onboarding/onboarding_controller.dart';
+import '../plan_controller.dart';
 
 class BudgetPlanStep extends ConsumerStatefulWidget {
-  const BudgetPlanStep({super.key});
+  const BudgetPlanStep({super.key, this.provider});
+
+  /// Which plan to edit. Defaults to onboarding.
+  final NotifierProvider<PlanController, PlanDraft>? provider;
 
   @override
   ConsumerState<BudgetPlanStep> createState() => _BudgetPlanStepState();
 }
 
 class _BudgetPlanStepState extends ConsumerState<BudgetPlanStep> {
+  NotifierProvider<PlanController, PlanDraft> get _p =>
+      widget.provider ?? onboardingProvider;
+
   bool _ready = false;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    ref.read(onboardingProvider.notifier).preparePlan().then((_) {
+    ref.read(_p.notifier).preparePlan().then((_) {
       if (mounted) setState(() => _ready = true);
     });
   }
@@ -40,7 +47,7 @@ class _BudgetPlanStepState extends ConsumerState<BudgetPlanStep> {
   }
 
   Future<void> _finish() async {
-    final draft = ref.read(onboardingProvider);
+    final draft = ref.read(_p);
     final messenger = ScaffoldMessenger.of(context);
     if (draft.unassignedKobo < 0) {
       messenger.showSnackBar(SnackBar(
@@ -53,7 +60,7 @@ class _BudgetPlanStepState extends ConsumerState<BudgetPlanStep> {
     }
     setState(() => _saving = true);
     try {
-      await ref.read(onboardingProvider.notifier).finish();
+      await ref.read(_p.notifier).finish();
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -67,8 +74,8 @@ class _BudgetPlanStepState extends ConsumerState<BudgetPlanStep> {
   Widget build(BuildContext context) {
     if (!_ready) return const Center(child: CircularProgressIndicator());
 
-    final draft = ref.watch(onboardingProvider);
-    final notifier = ref.read(onboardingProvider.notifier);
+    final draft = ref.watch(_p);
+    final notifier = ref.read(_p.notifier);
     final cats = switch (ref.watch(expenseCategoriesProvider)) {
       AsyncData(:final value) => value,
       _ => const <BudgetCategory>[],

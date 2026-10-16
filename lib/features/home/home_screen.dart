@@ -17,6 +17,9 @@ import '../budget/domain/safe_to_spend.dart';
 import '../onboarding/onboarding_controller.dart';
 import '../transactions/ui/quick_add_sheet.dart';
 import 'dashboard.dart';
+import 'pace_banner.dart';
+import '../settings/ui/reminders_sheet.dart';
+import '../transactions/ui/tx_tile.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -158,6 +161,7 @@ class _DashboardView extends ConsumerWidget {
           children: [
             Text('kobo', style: displayStyle(26, weight: 800)),
             const Spacer(),
+            const RemindersButton(),
             _Pill(
               text: periodLabel,
               color: scheme.surfaceContainer,
@@ -221,6 +225,7 @@ class _DashboardView extends ConsumerWidget {
             ],
           ),
         ),
+        const PaceBanner(),
         const SizedBox(height: 28),
         Text('This period', style: text.titleLarge),
         const SizedBox(height: 2),
@@ -259,7 +264,8 @@ class _DashboardView extends ConsumerWidget {
                   child: Icon(Icons.delete_outline_rounded, color: k.danger),
                 ),
                 onDismissed: (_) => onDelete(t),
-                child: _TxRow(
+                child: TxTile(
+                  onTap: () => editTransaction(context, ref, t),
                   txn: t,
                   category: data.categoriesById[t.categoryId],
                   now: data.now,
@@ -515,71 +521,6 @@ class _ProgressBar extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _TxRow extends StatelessWidget {
-  const _TxRow({required this.txn, required this.category, required this.now});
-  final Txn txn;
-  final BudgetCategory? category;
-  final DateTime now;
-
-  String _when() {
-    final diff = daysBetween(txn.occurredAt, now);
-    if (diff == 0) return DateFormat.jm().format(txn.occurredAt);
-    if (diff == 1) return 'Yesterday';
-    return DateFormat('d MMM').format(txn.occurredAt);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final text = theme.textTheme;
-    final scheme = theme.colorScheme;
-    final k = context.koboColors;
-    final income = txn.type == TxType.income;
-    final muted = text.bodySmall?.copyWith(color: scheme.onSurfaceVariant);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          CategoryAvatar(
-            iconKey: category?.iconKey ?? 'other',
-            colorValue: category?.colorValue ?? 0xFF78716C,
-            radius: 18,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(category?.name ?? 'Removed category',
-                    style:
-                        text.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-                if (txn.note != null)
-                  Text(txn.note!,
-                      style: muted,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '${income ? '+' : '−'}${formatNaira(txn.amountKobo)}',
-                style: text.amount(17, color: income ? k.good : null),
-              ),
-              const SizedBox(height: 2),
-              Text(_when(), style: muted),
-            ],
-          ),
-        ],
       ),
     );
   }

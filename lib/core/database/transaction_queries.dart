@@ -76,3 +76,52 @@ extension TransactionQueries on AppDatabase {
     return ids;
   }
 }
+
+extension TransactionEdits on AppDatabase {
+  Future<void> updateTransaction(
+    int id, {
+    required TxType type,
+    required int amountKobo,
+    required int categoryId,
+    String? note,
+    required DateTime occurredAt,
+  }) =>
+      (update(transactions)..where((t) => t.id.equals(id)))
+          .write(TransactionsCompanion(
+        type: Value(type),
+        amountKobo: Value(amountKobo),
+        categoryId: Value(categoryId),
+        note: Value(note),
+        occurredAt: Value(occurredAt),
+      ));
+
+  /// Writes an old version back, for undoing an edit.
+  Future<void> replaceTransaction(Txn txn) =>
+      update(transactions).replace(txn);
+
+  /// Newest first. Any filter left null is ignored. [to] is exclusive.
+  Stream<List<Txn>> watchTransactionsFiltered({
+    DateTime? from,
+    DateTime? to,
+    TxType? type,
+    int? categoryId,
+  }) {
+    final query = select(transactions)
+      ..where((t) {
+        Expression<bool> e = const Constant(true);
+        if (from != null) e = e & t.occurredAt.isBiggerOrEqualValue(from!);
+        if (to != null) e = e & t.occurredAt.isSmallerThanValue(to!);
+        if (type != null) e = e & t.type.equalsValue(type!);
+        if (categoryId != null) e = e & t.categoryId.equals(categoryId!);
+        return e;
+      })
+      ..orderBy([
+        (t) => OrderingTerm.desc(t.occurredAt),
+        (t) => OrderingTerm.desc(t.id),
+      ]);
+    return query.watch();
+  }
+
+  Stream<List<Txn>> watchTransactionsBetween(DateTime from, DateTime to) =>
+      watchTransactionsFiltered(from: from, to: to);
+}

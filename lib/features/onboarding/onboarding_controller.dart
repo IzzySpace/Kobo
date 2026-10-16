@@ -1,62 +1,17 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/database/app_database.dart';
+import '../../core/database/goal_queries.dart';
 import '../../core/dates.dart';
-import '../../core/providers.dart';
-import '../budget/domain/budget_suggester.dart';
+import '../budget/plan_controller.dart';
 
-const _unset = Object();
+export '../budget/plan_controller.dart' show PlanDraft;
 
-class OnboardingDraft {
-  const OnboardingDraft({
-    this.balanceKobo = 0,
-    this.usualIncomeKobo = 0,
-    this.frequency = IncomeFrequency.monthly,
-    this.cycleEnd,
-    this.goal,
-    this.planned = const {},
-    this.savingsKobo = 0,
-  });
+typedef OnboardingDraft = PlanDraft;
 
-  final int balanceKobo;
-  final int usualIncomeKobo;
-  final IncomeFrequency frequency;
-  final DateTime? cycleEnd;
-  final GoalDraft? goal;
-  final Map<int, int> planned;
-  final int savingsKobo;
-
-  int get days => cycleEnd == null ? 1 : cycleDays(cycleEnd!);
-  int get plannedTotalKobo =>
-      planned.values.fold(0, (a, b) => a + b) + savingsKobo;
-  int get unassignedKobo => balanceKobo - plannedTotalKobo;
-
-  OnboardingDraft copyWith({
-    int? balanceKobo,
-    int? usualIncomeKobo,
-    IncomeFrequency? frequency,
-    Object? cycleEnd = _unset,
-    Object? goal = _unset,
-    Map<int, int>? planned,
-    int? savingsKobo,
-  }) =>
-      OnboardingDraft(
-        balanceKobo: balanceKobo ?? this.balanceKobo,
-        usualIncomeKobo: usualIncomeKobo ?? this.usualIncomeKobo,
-        frequency: frequency ?? this.frequency,
-        cycleEnd:
-            identical(cycleEnd, _unset) ? this.cycleEnd : cycleEnd as DateTime?,
-        goal: identical(goal, _unset) ? this.goal : goal as GoalDraft?,
-        planned: planned ?? this.planned,
-        savingsKobo: savingsKobo ?? this.savingsKobo,
-      );
-}
-
-class OnboardingController extends Notifier<OnboardingDraft> {
+class OnboardingController extends PlanController {
   @override
-  OnboardingDraft build() => const OnboardingDraft();
-
-  AppDatabase get _db => ref.read(databaseProvider);
+  PlanDraft build() => const PlanDraft();
 
   void setBalance(int kobo) => state = state.copyWith(balanceKobo: kobo);
 
@@ -76,57 +31,13 @@ class OnboardingController extends Notifier<OnboardingDraft> {
         savingsKobo: goal == null ? 0 : null,
       );
 
-  /// First visit: fills in a suggestion. Later visits keep your edits and
-  /// only add new categories (at ₦0) or drop removed ones.
-  Future<void> preparePlan() async {
-    final cats = await _db.getCategories(CategoryKind.expense);
-    if (state.planned.isEmpty) {
-      _suggest(cats);
-      return;
-    }
-    state = state.copyWith(
-      planned: {for (final c in cats) c.id: state.planned[c.id] ?? 0},
-    );
-  }
-
-  Future<void> resuggest() async =>
-      _suggest(await _db.getCategories(CategoryKind.expense));
-
-  void _suggest(List<BudgetCategory> cats) {
-    final s = BudgetSuggester.suggest(
-      availableKobo: state.balanceKobo,
-      days: state.days,
-      hasSavingsGoal: state.goal != null,
-      categories: [
-        for (final c in cats)
-          CategorySlot(
-            id: c.id,
-            iconKey: c.iconKey,
-            tier: c.tier ?? PriorityTier.wants,
-          ),
-      ],
-    );
-    state = state.copyWith(
-      planned: s.plannedByCategory,
-      savingsKobo: s.savingsKobo,
-    );
-  }
-
-  void setPlanned(int categoryId, int kobo) =>
-      state = state.copyWith(planned: {...state.planned, categoryId: kobo});
-
-  void setSavings(int kobo) => state = state.copyWith(savingsKobo: kobo);
-
-  void moveUnassignedToSavings() {
-    final extra = state.unassignedKobo;
-    if (extra > 0) setSavings(state.savingsKobo + extra);
-  }
-
+  @override
   Future<void> finish() async {
     final active = {
-      for (final c in await _db.getCategories(CategoryKind.expense)) c.id,
+      for (final c in await db.getCategories(CategoryKind.expense)) c.id,
     };
-    await _db.completeOnboarding(
+    final savings = state.goal == null ? 0 : state.savingsKobo;
+    await db.completeOnboarding(
       balanceKobo: state.balanceKobo,
       usualIncomeKobo: state.usualIncomeKobo,
       frequency: state.frequency,
@@ -135,13 +46,20 @@ class OnboardingController extends Notifier<OnboardingDraft> {
         for (final e in state.planned.entries)
           if (active.contains(e.key)) e.key: e.value,
       },
-      plannedSavingsKobo: state.goal == null ? 0 : state.savingsKobo,
+      plannedSavingsKobo: savings,
       goal: state.goal,
     );
+    // Planned savings are set aside straight away.
+    if (savings > 0) {
+      final goals = await db.getGoals();
+      if (goals.isNotEmpty) {
+        await db.addContribution(goals.last.id, savings,
+            note: 'Planned savings');
+      }
+    }
   }
 }
 
-final onboardingProvider =
-    NotifierProvider<OnboardingController, OnboardingDraft>(
+final onboardingProvider = NotifierProvider<OnboardingController, PlanDraft>(
   OnboardingController.new,
 );

@@ -12,6 +12,9 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/ui/amount_field.dart';
 import '../../../core/ui/category_icons.dart';
 import '../../../core/ui/motion.dart';
+import '../../budget/ui/income_arrived_sheet.dart';
+
+enum TxOutcome { added, updated, deleted }
 
 class LoggedTx {
   const LoggedTx({
@@ -19,44 +22,54 @@ class LoggedTx {
     required this.type,
     required this.amountKobo,
     required this.categoryName,
+    this.outcome = TxOutcome.added,
   });
 
   final int id;
   final TxType type;
   final int amountKobo;
   final String categoryName;
+  final TxOutcome outcome;
 }
 
-Future<LoggedTx?> showQuickAdd(
+/// Opens the logging sheet. Pass [existing] to edit a transaction.
+Future<LoggedTx?> _showQuickAddSheet(
   BuildContext context, {
   TxType initialType = TxType.expense,
+  Txn? existing,
 }) =>
     showModalBottomSheet<LoggedTx>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
-      builder: (_) => QuickAddSheet(initialType: initialType),
+      builder: (_) =>
+          QuickAddSheet(initialType: initialType, existing: existing),
     );
 
 class QuickAddSheet extends ConsumerStatefulWidget {
-  const QuickAddSheet({super.key, required this.initialType});
+  const QuickAddSheet({super.key, required this.initialType, this.existing});
   final TxType initialType;
+  final Txn? existing;
 
   @override
   ConsumerState<QuickAddSheet> createState() => _QuickAddSheetState();
 }
 
 class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
-  late TxType _type = widget.initialType;
-  String _digits = '';
-  int? _categoryId;
-  final _note = TextEditingController();
-  bool _showNote = false;
-  DateTime _day = dateOnly(DateTime.now());
+  late TxType _type = widget.existing?.type ?? widget.initialType;
+  late String _digits = widget.existing == null
+      ? ''
+      : (widget.existing!.amountKobo ~/ 100).toString();
+  late int? _categoryId = widget.existing?.categoryId;
+  late final _note = TextEditingController(text: widget.existing?.note ?? '');
+  late bool _showNote = widget.existing?.note != null;
+  late DateTime _day = dateOnly(widget.existing?.occurredAt ?? DateTime.now());
   List<int> _recent = const [];
   bool _saving = false;
   String? _error;
+
+  bool get _editing => widget.existing != null;
 
   @override
   void initState() {
@@ -109,7 +122,7 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
     final picked = await showDatePicker(
       context: context,
       initialDate: _day,
-      firstDate: DateTime(today.year - 1, today.month, today.day),
+      firstDate: DateTime(today.year - 2, today.month, today.day),
       lastDate: today,
     );
     if (picked != null) setState(() => _day = picked);
@@ -125,9 +138,21 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
   String _saveLabel(BudgetCategory? cat) {
     if (_amountKobo == 0) return 'Enter an amount';
     if (cat == null) return 'Pick a category';
+    if (_editing) return 'Save changes';
     return _type == TxType.expense
         ? 'Save ${formatNaira(_amountKobo)} to ${cat.name}'
         : 'Add ${formatNaira(_amountKobo)} from ${cat.name}';
+  }
+
+  DateTime _when() {
+    final now = DateTime.now();
+    final existing = widget.existing;
+    if (existing != null && daysBetween(_day, existing.occurredAt) == 0) {
+      return existing.occurredAt;
+    }
+    return daysBetween(_day, now) == 0
+        ? now
+        : DateTime(_day.year, _day.month, _day.day, 12);
   }
 
   Future<void> _save(BudgetCategory cat) async {
@@ -136,19 +161,30 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
       _saving = true;
       _error = null;
     });
-    final now = DateTime.now();
-    final when = daysBetween(_day, now) == 0
-        ? now
-        : DateTime(_day.year, _day.month, _day.day, 12);
+    final db = ref.read(databaseProvider);
     final note = _note.text.trim();
     try {
-      final id = await ref.read(databaseProvider).addTransaction(
-            type: _type,
-            amountKobo: _amountKobo,
-            categoryId: cat.id,
-            note: note.isEmpty ? null : note,
-            occurredAt: when,
-          );
+      final existing = widget.existing;
+      final int id;
+      if (existing == null) {
+        id = await db.addTransaction(
+          type: _type,
+          amountKobo: _amountKobo,
+          categoryId: cat.id,
+          note: note.isEmpty ? null : note,
+          occurredAt: _when(),
+        );
+      } else {
+        id = existing.id;
+        await db.updateTransaction(
+          id,
+          type: _type,
+          amountKobo: _amountKobo,
+          categoryId: cat.id,
+          note: note.isEmpty ? null : note,
+          occurredAt: _when(),
+        );
+      }
       HapticFeedback.mediumImpact();
       if (!mounted) return;
       Navigator.pop(
@@ -158,6 +194,7 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
           type: _type,
           amountKobo: _amountKobo,
           categoryName: cat.name,
+          outcome: _editing ? TxOutcome.updated : TxOutcome.added,
         ),
       );
     } catch (_) {
@@ -165,6 +202,32 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
       setState(() {
         _saving = false;
         _error = 'Couldn’t save. Please try again.';
+      });
+    }
+  }
+
+  Future<void> _delete() async {
+    final t = widget.existing!;
+    setState(() => _saving = true);
+    try {
+      await ref.read(databaseProvider).deleteTransaction(t.id);
+      HapticFeedback.mediumImpact();
+      if (!mounted) return;
+      Navigator.pop(
+        context,
+        LoggedTx(
+          id: t.id,
+          type: t.type,
+          amountKobo: t.amountKobo,
+          categoryName: '',
+          outcome: TxOutcome.deleted,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = 'Couldn’t delete. Please try again.';
       });
     }
   }
@@ -210,6 +273,21 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (_editing) ...[
+              Row(
+                children: [
+                  Text('Edit transaction', style: text.titleLarge),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: 'Delete',
+                    onPressed: _saving ? null : _delete,
+                    icon: Icon(Icons.delete_outline_rounded,
+                        color: scheme.error),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
             SegmentedButton<TxType>(
               showSelectedIcon: false,
               segments: const [
@@ -274,7 +352,7 @@ class _QuickAddSheetState extends ConsumerState<QuickAddSheet> {
               const SizedBox(height: 8),
               TextField(
                 controller: _note,
-                autofocus: true,
+                autofocus: !_editing,
                 maxLength: 200,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: koboInputDecoration(
@@ -404,4 +482,24 @@ class _Keypad extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Opens the logging sheet. After new income, offers a new budget period.
+Future<LoggedTx?> showQuickAdd(
+  BuildContext context, {
+  TxType initialType = TxType.expense,
+  Txn? existing,
+}) async {
+  final result = await _showQuickAddSheet(
+    context,
+    initialType: initialType,
+    existing: existing,
+  );
+  if (result != null &&
+      result.type == TxType.income &&
+      result.outcome == TxOutcome.added &&
+      context.mounted) {
+    await maybeShowIncomeArrived(context, result.amountKobo);
+  }
+  return result;
 }

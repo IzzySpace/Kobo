@@ -11,3 +11,7 @@ int cycleDays(DateTime end, {DateTime? now}) {
   final d = daysBetween(now ?? DateTime.now(), end);
   return d < 1 ? 1 : d;
 }
+
+/// Monday of the week containing [d].
+DateTime weekStartOf(DateTime d) =>
+    DateTime(d.year, d.month, d.day - (d.weekday - 1));

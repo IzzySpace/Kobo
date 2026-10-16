@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/providers.dart';
 import 'core/theme/app_theme.dart';
+import 'features/settings/lock_gate.dart';
 import 'features/shell/app_shell.dart';
 import 'features/onboarding/onboarding_screen.dart';
 
@@ -25,7 +26,7 @@ class KoboApp extends ConsumerWidget {
       themeMode: themeMode,
       home: switch (settings) {
         AsyncData(:final value) => value.onboardingDone
-            ? const AppShell()
+            ? const LockGate(child: AppShell())
             : const OnboardingScreen(),
         AsyncError(:final error) => Scaffold(
             body: Center(

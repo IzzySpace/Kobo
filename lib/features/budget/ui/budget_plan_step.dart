@@ -15,10 +15,16 @@ import '../../onboarding/onboarding_controller.dart';
 import '../plan_controller.dart';
 
 class BudgetPlanStep extends ConsumerStatefulWidget {
-  const BudgetPlanStep({super.key, this.provider});
+  const BudgetPlanStep({super.key, this.provider, this.saveLabel, this.onDone});
 
   /// Which plan to edit. Defaults to onboarding.
   final NotifierProvider<PlanController, PlanDraft>? provider;
+
+  /// Main button text. Defaults to "Start budgeting".
+  final String? saveLabel;
+
+  /// Called after the plan is saved.
+  final VoidCallback? onDone;
 
   @override
   ConsumerState<BudgetPlanStep> createState() => _BudgetPlanStepState();
@@ -61,6 +67,7 @@ class _BudgetPlanStepState extends ConsumerState<BudgetPlanStep> {
     setState(() => _saving = true);
     try {
       await ref.read(_p.notifier).finish();
+      widget.onDone?.call();
     } catch (_) {
       if (!mounted) return;
       setState(() => _saving = false);
@@ -249,7 +256,7 @@ class _BudgetPlanStepState extends ConsumerState<BudgetPlanStep> {
       title: 'Here’s your plan',
       subtitle: 'Essentials get money first, wants last. Tap any amount to '
           'change it.',
-      primaryLabel: _saving ? 'Saving…' : 'Start budgeting',
+      primaryLabel: _saving ? 'Saving…' : (widget.saveLabel ?? 'Start budgeting'),
       onPrimary: _saving ? null : _finish,
       children: [
         NoteCard(

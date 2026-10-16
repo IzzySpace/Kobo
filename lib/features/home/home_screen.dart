@@ -18,6 +18,7 @@ import '../onboarding/onboarding_controller.dart';
 import '../transactions/ui/quick_add_sheet.dart';
 import 'dashboard.dart';
 import 'pace_banner.dart';
+import '../settings/ui/settings_screen.dart';
 import '../settings/ui/reminders_sheet.dart';
 import '../transactions/ui/tx_tile.dart';
 
@@ -162,6 +163,7 @@ class _DashboardView extends ConsumerWidget {
             Text('kobo', style: displayStyle(26, weight: 800)),
             const Spacer(),
             const RemindersButton(),
+            const SettingsButton(),
             _Pill(
               text: periodLabel,
               color: scheme.surfaceContainer,
